@@ -9,13 +9,14 @@ import (
 
 func resourceFirewall() *schema.Resource {
 	return &schema.Resource{
-		CreateContext: resourceFirewallCreate,
+		CreateContext: resourceFirewallUpdate,
 		ReadContext:   resourceFirewallRead,
 		UpdateContext: resourceFirewallUpdate,
 		DeleteContext: resourceFirewallDelete,
 		Schema: map[string]*schema.Schema{
 			"server_ip": {
 				Type:     schema.TypeString,
+				ForceNew: true,
 				Required: true,
 			},
 			"active": {
@@ -66,7 +67,44 @@ func resourceFirewall() *schema.Resource {
 	}
 }
 
-func resourceFirewallCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+func resourceFirewallRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	c := m.(HetznerRobotClient)
+
+	serverIP := d.Id()
+
+	firewall, err := c.getFirewall(serverIP)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	if err := d.Set("active", firewall.Status == "active"); err != nil {
+		return diag.Errorf("failed to set 'active': %s", err)
+	}
+
+	if err := d.Set("whitelist_hos", firewall.WhitelistHetznerServices); err != nil {
+		return diag.Errorf("failed to set 'whitelist_hos': %s", err)
+	}
+
+	rules := []interface{}{}
+	for _, r := range firewall.Rules.Input {
+		rules = append(rules, map[string]interface{}{
+			"name":     r.Name,
+			"dst_ip":   r.DstIp,
+			"dst_port": r.DstPort,
+			"src_ip":   r.SrcIp,
+			"src_port": r.SrcPort,
+			"protocol": r.Protocol,
+			"action":   r.Action,
+		})
+	}
+	if err := d.Set("rule", rules); err != nil {
+		return diag.Errorf("failed to set 'rules': %s", err)
+	}
+
+	return nil
+}
+
+func resourceFirewallUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	c := m.(HetznerRobotClient)
 
 	serverIP := d.Get("server_ip").(string)
@@ -80,59 +118,47 @@ func resourceFirewallCreate(ctx context.Context, d *schema.ResourceData, m inter
 	for _, ruleMap := range d.Get("rule").([]interface{}) {
 		ruleProperties := ruleMap.(map[string]interface{})
 		rules = append(rules, HetznerRobotFirewallRule{
-			Name: ruleProperties["name"].(string),
-			SrcIp: ruleProperties["src_ip"].(string),
-			SrcPort: ruleProperties["src_port"].(string),
-			DstIp: ruleProperties["dst_ip"].(string),
-			DstPort: ruleProperties["dst_port"].(string),
+			Name:     ruleProperties["name"].(string),
+			SrcIp:    ruleProperties["src_ip"].(string),
+			SrcPort:  ruleProperties["src_port"].(string),
+			DstIp:    ruleProperties["dst_ip"].(string),
+			DstPort:  ruleProperties["dst_port"].(string),
 			Protocol: ruleProperties["protocol"].(string),
-			Action: ruleProperties["action"].(string),
+			Action:   ruleProperties["action"].(string),
 		})
 	}
 
 	if err := c.setFirewall(HetznerRobotFirewall{
-		IP: serverIP,
+		IP:                       serverIP,
 		WhitelistHetznerServices: d.Get("whitelist_hos").(bool),
-		Status: status,
-		Rules: HetznerRobotFirewallRules{Input: rules},
+		Status:                   status,
+		Rules:                    HetznerRobotFirewallRules{Input: rules},
 	}); err != nil {
 		return diag.FromErr(err)
 	}
 
 	d.SetId(serverIP)
 
-	// Warning or errors can be collected in a slice type
-	var diags diag.Diagnostics
-
-
-	return diags
-}
-
-func resourceFirewallRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c := m.(HetznerRobotClient)
-
-	serverIP := d.Id()
-
-	_, err := c.getFirewall(serverIP)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-
-
-	// Warning or errors can be collected in a slice type
-	var diags diag.Diagnostics
-
-	return diags
-}
-
-func resourceFirewallUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	return resourceFirewallRead(ctx, d, m)
 }
 
 func resourceFirewallDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Warning or errors can be collected in a slice type
-	var diags diag.Diagnostics
+	// Since all Hetzner servers have an associated firewall there is no real
+	// way to delete this resource but removing all rules help by making sure we
+	// don't leave a server unknowingly exposed to Internet.
 
-	return diags
+	c := m.(HetznerRobotClient)
+	serverIP := d.Get("server_ip").(string)
+	status := "disabled"
+	if d.Get("active").(bool) {
+		status = "active"
+	}
+
+	err := c.setFirewall(HetznerRobotFirewall{
+		IP: serverIP,
+		Status: status,
+		WhitelistHetznerServices: false,
+	})
+
+	return diag.FromErr(err)
 }
