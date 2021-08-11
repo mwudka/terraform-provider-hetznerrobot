@@ -5,6 +5,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/lenstra/hetzner"
 )
 
 func resourceFirewall() *schema.Resource {
@@ -68,11 +69,11 @@ func resourceFirewall() *schema.Resource {
 }
 
 func resourceFirewallRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c := m.(HetznerRobotClient)
+	c := m.(*hetzner.Client)
 
 	serverIP := d.Id()
 
-	firewall, err := c.getFirewall(serverIP)
+	firewall, err := c.Firewall().Info(serverIP)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -81,7 +82,7 @@ func resourceFirewallRead(ctx context.Context, d *schema.ResourceData, m interfa
 		return diag.Errorf("failed to set 'active': %s", err)
 	}
 
-	if err := d.Set("whitelist_hos", firewall.WhitelistHetznerServices); err != nil {
+	if err := d.Set("whitelist_hos", firewall.WhitelistHOS); err != nil {
 		return diag.Errorf("failed to set 'whitelist_hos': %s", err)
 	}
 
@@ -89,9 +90,9 @@ func resourceFirewallRead(ctx context.Context, d *schema.ResourceData, m interfa
 	for _, r := range firewall.Rules.Input {
 		rules = append(rules, map[string]interface{}{
 			"name":     r.Name,
-			"dst_ip":   r.DstIp,
+			"dst_ip":   r.DstIP,
 			"dst_port": r.DstPort,
-			"src_ip":   r.SrcIp,
+			"src_ip":   r.SrcIP,
 			"src_port": r.SrcPort,
 			"protocol": r.Protocol,
 			"action":   r.Action,
@@ -105,7 +106,7 @@ func resourceFirewallRead(ctx context.Context, d *schema.ResourceData, m interfa
 }
 
 func resourceFirewallUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c := m.(HetznerRobotClient)
+	c := m.(*hetzner.Client)
 
 	serverIP := d.Get("server_ip").(string)
 
@@ -114,26 +115,27 @@ func resourceFirewallUpdate(ctx context.Context, d *schema.ResourceData, m inter
 		status = "active"
 	}
 
-	rules := make([]HetznerRobotFirewallRule, 0)
+	rules := []*hetzner.FirewallRule{}
 	for _, ruleMap := range d.Get("rule").([]interface{}) {
 		ruleProperties := ruleMap.(map[string]interface{})
-		rules = append(rules, HetznerRobotFirewallRule{
+		rules = append(rules, &hetzner.FirewallRule{
 			Name:     ruleProperties["name"].(string),
-			SrcIp:    ruleProperties["src_ip"].(string),
-			SrcPort:  ruleProperties["src_port"].(string),
-			DstIp:    ruleProperties["dst_ip"].(string),
-			DstPort:  ruleProperties["dst_port"].(string),
-			Protocol: ruleProperties["protocol"].(string),
+			SrcIP:    hetzner.String(ruleProperties["src_ip"].(string)),
+			SrcPort:  hetzner.String(ruleProperties["src_port"].(string)),
+			DstIP:    hetzner.String(ruleProperties["dst_ip"].(string)),
+			DstPort:  hetzner.String(ruleProperties["dst_port"].(string)),
+			Protocol: hetzner.String(ruleProperties["protocol"].(string)),
 			Action:   ruleProperties["action"].(string),
 		})
 	}
 
-	if err := c.setFirewall(HetznerRobotFirewall{
-		IP:                       serverIP,
-		WhitelistHetznerServices: d.Get("whitelist_hos").(bool),
-		Status:                   status,
-		Rules:                    HetznerRobotFirewallRules{Input: rules},
-	}); err != nil {
+	_, err := c.Firewall().Update(&hetzner.FirewallRequest{
+		ServerIP:     serverIP,
+		WhitelistHOS: hetzner.Bool(d.Get("whitelist_hos").(bool)),
+		Status:       hetzner.String(status),
+		Rules:        hetzner.FirewallRules{Input: rules},
+	})
+	if err != nil {
 		return diag.FromErr(err)
 	}
 
@@ -147,17 +149,17 @@ func resourceFirewallDelete(ctx context.Context, d *schema.ResourceData, m inter
 	// way to delete this resource but removing all rules help by making sure we
 	// don't leave a server unknowingly exposed to Internet.
 
-	c := m.(HetznerRobotClient)
+	c := m.(*hetzner.Client)
 	serverIP := d.Get("server_ip").(string)
 	status := "disabled"
 	if d.Get("active").(bool) {
 		status = "active"
 	}
 
-	err := c.setFirewall(HetznerRobotFirewall{
-		IP: serverIP,
-		Status: status,
-		WhitelistHetznerServices: false,
+	_, err := c.Firewall().Update(&hetzner.FirewallRequest{
+		ServerIP:     serverIP,
+		Status:       hetzner.String(status),
+		WhitelistHOS: hetzner.Bool(false),
 	})
 
 	return diag.FromErr(err)

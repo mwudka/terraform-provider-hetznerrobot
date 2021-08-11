@@ -2,20 +2,22 @@ package hetznerrobot
 
 import (
 	"context"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/lenstra/hetzner"
 )
 
 // Provider -
 func Provider() *schema.Provider {
 	return &schema.Provider{
 		Schema: map[string]*schema.Schema{
-			"username": &schema.Schema{
+			"username": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				DefaultFunc: schema.EnvDefaultFunc("HETZNERROBOT_USERNAME", nil),
 			},
-			"password": &schema.Schema{
+			"password": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				DefaultFunc: schema.EnvDefaultFunc("HETZNERROBOT_PASSWORD", nil),
@@ -30,10 +32,9 @@ func Provider() *schema.Provider {
 }
 
 func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
-	username := d.Get("username").(string)
-	password := d.Get("password").(string)
+	config := hetzner.DefaultConfig()
+	config.User = d.Get("username").(string)
+	config.Password = d.Get("password").(string)
 
-	var diags diag.Diagnostics
-
-	return NewHetznerRobotClient(username, password), diags
+	return hetzner.NewClient(config), nil
 }
