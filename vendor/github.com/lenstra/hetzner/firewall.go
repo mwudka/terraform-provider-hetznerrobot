@@ -16,11 +16,11 @@ func (c *Client) Firewall() *FirewallClient {
 }
 
 func (f *FirewallClient) Info(ip string) (*Firewall, error) {
-	var d map[string]*Firewall
-	if err := f.c.get("firewall/"+ip, &d); err != nil {
+	content, err := f.c.do("GET", "firewall/"+ip, nil)
+	if err != nil {
 		return nil, err
 	}
-	return d["firewall"], nil
+	return decodeFirewall(content)
 }
 
 func (f *FirewallClient) Update(req *FirewallRequest) (*Firewall, error) {
@@ -35,6 +35,18 @@ func (f *FirewallClient) Update(req *FirewallRequest) (*Firewall, error) {
 		return nil, err
 	}
 
+	return decodeFirewall(content)
+}
+
+func (f *FirewallClient) Delete(ip string) (*Firewall, error) {
+	content, err := f.c.do("DELETE", "firewall/"+ip, nil)
+	if err != nil {
+		return nil, err
+	}
+	return decodeFirewall(content)
+}
+
+func decodeFirewall(content []byte) (*Firewall, error) {
 	var d map[string]interface{}
 	if err := json.Unmarshal(content, &d); err != nil {
 		return nil, err
@@ -42,7 +54,7 @@ func (f *FirewallClient) Update(req *FirewallRequest) (*Firewall, error) {
 
 	d = d["firewall"].(map[string]interface{})
 
-	if _, ok := d["rules"].([]interface{}); ok && len(d) == 0 {
+	if rules, ok := d["rules"].([]interface{}); ok && len(rules) == 0 {
 		d["rules"] = map[string]interface{}{}
 	}
 
@@ -50,7 +62,7 @@ func (f *FirewallClient) Update(req *FirewallRequest) (*Firewall, error) {
 	config := &mapstructure.DecoderConfig{
 		Metadata: nil,
 		Result:   &res,
-		TagName: "json",
+		TagName:  "json",
 	}
 
 	decoder, err := mapstructure.NewDecoder(config)
@@ -63,12 +75,4 @@ func (f *FirewallClient) Update(req *FirewallRequest) (*Firewall, error) {
 	}
 
 	return &res, nil
-}
-
-func (f *FirewallClient) Delete(ip string) (*Firewall, error) {
-	var d map[string]*Firewall
-	if err := f.c.delete("firewall/"+ip, &d); err != nil {
-		return nil, err
-	}
-	return d["firewall"], nil
 }
