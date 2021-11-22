@@ -75,4 +75,5 @@ resource "hetznerrobot_firewall" "firewall" {
 ### Optional
 
 - **password** (String)
+- **url** (String)
 - **username** (String)
