@@ -80,21 +80,21 @@ func resourceFirewallCreate(ctx context.Context, d *schema.ResourceData, m inter
 	for _, ruleMap := range d.Get("rule").([]interface{}) {
 		ruleProperties := ruleMap.(map[string]interface{})
 		rules = append(rules, HetznerRobotFirewallRule{
-			Name: ruleProperties["name"].(string),
-			SrcIp: ruleProperties["src_ip"].(string),
-			SrcPort: ruleProperties["src_port"].(string),
-			DstIp: ruleProperties["dst_ip"].(string),
-			DstPort: ruleProperties["dst_port"].(string),
+			Name:     ruleProperties["name"].(string),
+			SrcIP:    ruleProperties["src_ip"].(string),
+			SrcPort:  ruleProperties["src_port"].(string),
+			DstIP:    ruleProperties["dst_ip"].(string),
+			DstPort:  ruleProperties["dst_port"].(string),
 			Protocol: ruleProperties["protocol"].(string),
-			Action: ruleProperties["action"].(string),
+			Action:   ruleProperties["action"].(string),
 		})
 	}
 
 	if err := c.setFirewall(HetznerRobotFirewall{
-		IP: serverIP,
+		IP:                       serverIP,
 		WhitelistHetznerServices: d.Get("whitelist_hos").(bool),
-		Status: status,
-		Rules: HetznerRobotFirewallRules{Input: rules},
+		Status:                   status,
+		Rules:                    HetznerRobotFirewallRules{Input: rules},
 	}); err != nil {
 		return diag.FromErr(err)
 	}
@@ -103,7 +103,6 @@ func resourceFirewallCreate(ctx context.Context, d *schema.ResourceData, m inter
 
 	// Warning or errors can be collected in a slice type
 	var diags diag.Diagnostics
-
 
 	return diags
 }
@@ -117,8 +116,6 @@ func resourceFirewallRead(ctx context.Context, d *schema.ResourceData, m interfa
 	if err != nil {
 		return diag.FromErr(err)
 	}
-
-
 
 	// Warning or errors can be collected in a slice type
 	var diags diag.Diagnostics
