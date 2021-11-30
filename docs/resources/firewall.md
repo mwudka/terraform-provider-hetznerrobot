@@ -6,7 +6,7 @@ description: |-
   
 ---
 
-# Resource `hetznerrobot_firewall`
+# hetznerrobot_firewall (Resource)
 
 
 
